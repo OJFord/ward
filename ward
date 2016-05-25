@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Ward
+
+Usage: ward (-h | [-fad] FILE ...)
+
+Options:
+    -h --help       Display this usage information.
+    -f --fail-fast  Stop enforcing after first violation.
+    -a --angry      Enforce violations angrily. say your mind.
+    -d --dart       Fire a correctional dart at the violater via email.
+"""
+import os
+import re
+from docopt import docopt
+from sendgrid import Mail, SendGridClient
+from subprocess import PIPE, run
+
+
+def enforce(args):
+    if args.get('--dart'):
+        email = map_emails()
+
+    for f in args.get('FILE'):
+        whodunnit = blame(f)
+        violations = inspect(f, args.get('--fail-fast'))
+
+        violatees = {}
+        for violation, message in violations.items():
+            violatee = whodunnit[ violation ]
+            if violatee not in violatees:
+                violatees[ violatee ] = []
+            violatees[ violatee ].append(message)
+
+        if args.get('--dart'):
+            fire(f, {
+                email.get(name): violations
+                for name, violations in violatees.items()
+            })
+
+        if args.get('--angry'):
+            yell(f, violatees)
+
+        report(f, violatees)
+
+
+def report(f, offenders):
+    print('In {}:'.format(f))
+    for offender, offenses in offenders.items():
+        for offense in offenses:
+            print('\t{} is responsible for {}.'.format(offender, offense))
+
+
+def yell(f, offenders):
+    for offender, offenses in offenders.items():
+        for offense in offenses:
+            run([
+                'say', 
+                '{}, you are responsible for {}'.format(offender, offense)
+            ])
+
+
+def fire(f, offenders):
+    sg = SendGridClient(os.getenv('SENDGRID_API_KEY'))
+
+    for offender, offenses in offenders.items():
+        msg = Mail()
+        msg.set_subject('PEP 8 VIOLATIONS. You are hereby enforced.')
+        msg.set_from('pep8-enforcement-officer@python.org')
+        msg.add_to(offender)
+        msg.set_text(
+            'You are responsible for:\n'
+            + '\n\t'.join(offenses)
+            +'\nin {}. Now don\'t do it, again!'.format(f)
+        )
+        msg.add_attachment('correctional_tool', open('pep8_dart.jpg', 'rb'))
+        sg.send(msg)
+
+def inspect(f, failfast=False):
+    proc = run(['pep8', f], stdout=PIPE)
+    horrors = proc.stdout.decode('utf-8').strip()
+    violations = {}
+    for line in horrors.split('\n'):
+        s = re.search(':([0-9]+):[0-9]+: [A-Z][0-9]+ (.*)', line)
+        lnum = s.group(1)
+        msg = s.group(2)
+        violations[lnum] = msg
+        if failfast:
+            break
+    return violations
+
+
+def blame(f):
+    proc = run(['git', 'blame', f], stdout=PIPE)
+    blame = proc.stdout.decode('utf-8').strip()
+    whodunnit = {}
+    for line in blame.split('\n'):
+        s = re.search('.*\(([ A-Za-z]+[a-z])\s*[0-9].* ([1-9][0-9]*)\).*', line)
+        name = s.group(1)
+        lnum = s.group(2)
+        whodunnit[lnum] = name
+    return whodunnit
+
+
+def map_emails():
+    proc = run(['git', 'shortlog', '--email', '--summary'], stdout=PIPE)
+    log = proc.stdout.decode('utf-8').strip()
+    mapping = {}
+    for line in log.split('\n'):
+        s = re.search('\t([ A-Za-z]*) <(.*)>', line)
+        name = s.group(1)
+        email = s.group(2)
+        mapping[name] = email
+    return mapping
+
+
+if __name__ == '__main__':
+    enforce(docopt(__doc__))
