@@ -15,3 +15,17 @@ Options:
 ```
 
 Firing correctional darts requires a `SENDGRID_API_KEY` environment variable.
+
+## Example
+```sh
+$ ward ward
+In ward:
+    Ollie Ford is responsible for line too long (80 > 79 characters).
+    Ollie Ford is responsible for whitespace before ']'.
+    Ollie Ford is responsible for whitespace before ']'.
+    Ollie Ford is responsible for missing whitespace around operator.
+    Ollie Ford is responsible for line break before binary operator.
+    Ollie Ford is responsible for whitespace before ']'.
+    Ollie Ford is responsible for trailing whitespace.
+    Ollie Ford is responsible for expected 2 blank lines, found 1.
+```
